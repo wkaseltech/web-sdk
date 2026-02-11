@@ -34,6 +34,9 @@ dist
 build-storybook.log
 storybook-static
 
+#mock books (too large for GitHub)
+apps/**/static/mockBooks/*.json
+
 #audiosprite raw resource
 apps/**/src/game/resources/
 apps/**/src/game/sounds/

@@ -1,0 +1,277 @@
+import _ from 'lodash';
+
+import { recordBookEvent, checkIsMultipleRevealEvents, type BookEventHandlerMap } from 'utils-book';
+import { stateBet } from 'state-shared';
+
+import { eventEmitter } from './eventEmitter';
+import { playBookEvent } from './utils';
+import { winLevelMap, type WinLevel, type WinLevelData } from './winLevelMap';
+import { stateGame, stateGameDerived } from './stateGame.svelte';
+import type { BookEvent, BookEventOfType, BookEventContext } from './typesBookEvent';
+import type { Position } from './types';
+
+const winLevelSoundsPlay = ({ winLevelData }: { winLevelData: WinLevelData }) => {
+	if (winLevelData?.alias === 'max') eventEmitter.broadcastAsync({ type: 'uiHide' });
+	if (winLevelData?.sound?.sfx) {
+		eventEmitter.broadcast({ type: 'soundOnce', name: winLevelData.sound.sfx });
+	}
+	if (winLevelData?.sound?.bgm) {
+		eventEmitter.broadcast({ type: 'soundMusic', name: winLevelData.sound.bgm });
+	}
+	if (winLevelData?.type === 'big') {
+		eventEmitter.broadcast({ type: 'soundLoop', name: 'sfx_bigwin_coinloop' });
+	}
+};
+
+const winLevelSoundsStop = () => {
+	eventEmitter.broadcast({ type: 'soundStop', name: 'sfx_bigwin_coinloop' });
+	if (stateBet.activeBetModeKey === 'SUPERSPIN' || stateGame.gameType === 'freegame') {
+		eventEmitter.broadcast({ type: 'soundMusic', name: 'bgm_freespin' });
+	} else {
+		eventEmitter.broadcast({ type: 'soundMusic', name: 'bgm_main' });
+	}
+	eventEmitter.broadcastAsync({ type: 'uiShow' });
+};
+
+const animateSymbols = async ({ positions }: { positions: Position[] }) => {
+	eventEmitter.broadcast({ type: 'boardShow' });
+	await eventEmitter.broadcastAsync({
+		type: 'boardWithAnimateSymbols',
+		symbolPositions: positions,
+	});
+};
+
+export const bookEventHandlerMap: BookEventHandlerMap<BookEvent, BookEventContext> = {
+	reveal: async (bookEvent: BookEventOfType<'reveal'>, { bookEvents }: BookEventContext) => {
+		eventEmitter.broadcast({ type: 'tumbleWinAmountReset' });
+		eventEmitter.broadcast({ type: 'spinSoundPlay' });
+		const isBonusGame = checkIsMultipleRevealEvents({ bookEvents });
+		if (isBonusGame) {
+			eventEmitter.broadcast({ type: 'stopButtonEnable' });
+			recordBookEvent({ bookEvent });
+		}
+
+		stateGame.gameType = bookEvent.gameType;
+		await stateGameDerived.enhancedBoard.spin({ revealEvent: bookEvent });
+		eventEmitter.broadcast({ type: 'soundScatterCounterClear' });
+	},
+	winInfo: async (bookEvent: BookEventOfType<'winInfo'>) => {
+		const promise1 = async () => {
+			eventEmitter.broadcast({ type: 'soundOnce', name: 'sfx_winlevel_small' });
+			await animateSymbols({ positions: _.flatten(bookEvent.wins.map((win) => win.positions)) });
+		};
+
+		const promise2 = async () => {
+			await eventEmitter.broadcastAsync({
+				type: 'showClusterWinAmounts',
+				wins: bookEvent.wins.map((win) => {
+					return {
+						win: win.meta.winWithoutMult,
+						mult: win.meta.globalMult,
+						result: win.meta.winWithoutMult * win.meta.globalMult,
+						reel: win.meta.overlay.reel,
+						row: win.meta.overlay.row,
+					};
+				}),
+			});
+		};
+
+		await Promise.all([promise1(), promise2()]);
+	},
+	updateTumbleWin: async (bookEvent: BookEventOfType<'updateTumbleWin'>) => {
+		if (bookEvent.amount > 0) {
+			eventEmitter.broadcast({ type: 'tumbleWinAmountShow' });
+			eventEmitter.broadcast({
+				type: 'tumbleWinAmountUpdate',
+				amount: bookEvent.amount,
+				animate: false,
+			});
+		}
+	},
+	setTotalWin: async (bookEvent: BookEventOfType<'setTotalWin'>) => {
+		stateBet.winBookEventAmount = bookEvent.amount;
+	},
+	freeSpinTrigger: async (bookEvent: BookEventOfType<'freeSpinTrigger'>) => {
+		// animate key scatters
+		eventEmitter.broadcast({ type: 'soundOnce', name: 'sfx_scatter_win_v2' });
+		await animateSymbols({ positions: bookEvent.positions });
+		// show door transition into bonus
+		eventEmitter.broadcast({ type: 'soundOnce', name: 'sfx_superfreespin' });
+		await eventEmitter.broadcastAsync({ type: 'uiHide' });
+		await eventEmitter.broadcastAsync({ type: 'doorTransitionPlay' });
+		eventEmitter.broadcast({ type: 'freeSpinIntroShow' });
+		eventEmitter.broadcast({ type: 'soundOnce', name: 'jng_intro_fs' });
+		eventEmitter.broadcast({ type: 'soundMusic', name: 'bgm_freespin' });
+		await eventEmitter.broadcastAsync({
+			type: 'freeSpinIntroUpdate',
+			totalFreeSpins: bookEvent.totalFs,
+		});
+		stateGame.gameType = 'freegame';
+		eventEmitter.broadcast({ type: 'freeSpinIntroHide' });
+		eventEmitter.broadcast({ type: 'boardFrameGlowShow' });
+		// Show XP bar for bonus
+		eventEmitter.broadcast({ type: 'xpBarShow' });
+		eventEmitter.broadcast({
+			type: 'xpBarUpdate',
+			level: 1,
+			multiplier: 1,
+			clusterCount: 0,
+			escalating: false,
+		});
+		eventEmitter.broadcast({ type: 'freeSpinCounterShow' });
+		eventEmitter.broadcast({
+			type: 'freeSpinCounterUpdate',
+			current: undefined,
+			total: bookEvent.totalFs,
+		});
+		await eventEmitter.broadcastAsync({ type: 'uiShow' });
+		await eventEmitter.broadcastAsync({ type: 'drawerButtonShow' });
+		eventEmitter.broadcast({ type: 'drawerFold' });
+	},
+	updateFreeSpin: async (bookEvent: BookEventOfType<'updateFreeSpin'>) => {
+		eventEmitter.broadcast({ type: 'freeSpinCounterShow' });
+		eventEmitter.broadcast({
+			type: 'freeSpinCounterUpdate',
+			current: bookEvent.amount,
+			total: bookEvent.total,
+		});
+	},
+	freeSpinEnd: async (bookEvent: BookEventOfType<'freeSpinEnd'>) => {
+		const winLevelData = winLevelMap[bookEvent.winLevel as WinLevel];
+
+		await eventEmitter.broadcastAsync({ type: 'uiHide' });
+		stateGame.gameType = 'basegame';
+		// Reset XP state
+		stateGame.xpLevel = 1;
+		stateGame.xpClusterCount = 0;
+		stateGame.xpMultiplier = 1;
+		stateGame.xpEscalating = false;
+		eventEmitter.broadcast({ type: 'boardFrameGlowHide' });
+		eventEmitter.broadcast({ type: 'xpBarHide' });
+		eventEmitter.broadcast({ type: 'freeSpinOutroShow' });
+		eventEmitter.broadcast({ type: 'soundOnce', name: 'sfx_youwon_panel' });
+		winLevelSoundsPlay({ winLevelData });
+		await eventEmitter.broadcastAsync({
+			type: 'freeSpinOutroCountUp',
+			amount: bookEvent.amount,
+			winLevelData,
+		});
+		winLevelSoundsStop();
+		eventEmitter.broadcast({ type: 'freeSpinOutroHide' });
+		eventEmitter.broadcast({ type: 'freeSpinCounterHide' });
+		eventEmitter.broadcast({ type: 'tumbleWinAmountHide' });
+		await eventEmitter.broadcastAsync({ type: 'transition' });
+		await eventEmitter.broadcastAsync({ type: 'uiShow' });
+		await eventEmitter.broadcastAsync({ type: 'drawerUnfold' });
+		eventEmitter.broadcast({ type: 'drawerButtonHide' });
+	},
+	tumbleBoard: async (bookEvent: BookEventOfType<'tumbleBoard'>) => {
+		eventEmitter.broadcast({ type: 'boardHide' });
+		eventEmitter.broadcast({ type: 'tumbleBoardShow' });
+		eventEmitter.broadcast({ type: 'tumbleBoardInit', addingBoard: bookEvent.newSymbols });
+		eventEmitter.broadcast({ type: 'soundOnce', name: 'sfx_multiplier_explosion_b' });
+		await eventEmitter.broadcastAsync({
+			type: 'tumbleBoardExplode',
+			explodingPositions: bookEvent.explodingSymbols,
+		});
+		eventEmitter.broadcast({ type: 'tumbleBoardRemoveExploded' });
+		await eventEmitter.broadcastAsync({ type: 'tumbleBoardSlideDown' });
+		eventEmitter.broadcast({
+			type: 'boardSettle',
+			board: stateGameDerived
+				.tumbleBoardCombined()
+				.map((tumbleReel) => tumbleReel.map((tumbleSymbol) => tumbleSymbol.rawSymbol)),
+		});
+		eventEmitter.broadcast({ type: 'tumbleBoardReset' });
+		eventEmitter.broadcast({ type: 'tumbleBoardHide' });
+		eventEmitter.broadcast({ type: 'boardShow' });
+	},
+	setWin: async (bookEvent: BookEventOfType<'setWin'>) => {
+		// Only show win presentation for wins >= 30x bet
+		const winMultiple = bookEvent.amount / (stateBet.betAmount * 100);
+		if (winMultiple < 30) return;
+
+		const winLevelData = winLevelMap[bookEvent.winLevel as WinLevel];
+
+		eventEmitter.broadcast({ type: 'winShow' });
+		winLevelSoundsPlay({ winLevelData });
+		await eventEmitter.broadcastAsync({
+			type: 'winUpdate',
+			amount: bookEvent.amount,
+			winLevelData,
+		});
+		winLevelSoundsStop();
+		eventEmitter.broadcast({ type: 'winHide' });
+	},
+	finalWin: async (bookEvent: BookEventOfType<'finalWin'>) => {
+		eventEmitter.broadcast({ type: 'tumbleWinAmountHide' });
+	},
+	// DQ custom handlers
+	potionCollected: async (bookEvent: BookEventOfType<'potionCollected'>) => {
+		// Animate potion symbols on the board
+		await animateSymbols({ positions: bookEvent.positions });
+
+		// Show "+1 Spin" popup at each potion position
+		eventEmitter.broadcast({
+			type: 'potionPopupShow',
+			positions: bookEvent.positions,
+		});
+
+		// Update board visuals: replace PT with the actual replacement symbols
+		eventEmitter.broadcast({
+			type: 'boardSettle',
+			board: bookEvent.postBoard,
+		});
+
+		// Update free spin counter with new total
+		eventEmitter.broadcast({
+			type: 'freeSpinCounterUpdate',
+			current: bookEvent.currentSpin,
+			total: bookEvent.newTotalSpins,
+		});
+	},
+	updateXP: async (bookEvent: BookEventOfType<'updateXP'>) => {
+		stateGame.xpLevel = bookEvent.level;
+		stateGame.xpClusterCount = bookEvent.clusterCount;
+		stateGame.xpMultiplier = bookEvent.multiplier;
+		stateGame.xpEscalating = bookEvent.escalating;
+		eventEmitter.broadcast({ type: 'xpBarShow' });
+		eventEmitter.broadcast({
+			type: 'xpBarUpdate',
+			level: bookEvent.level,
+			multiplier: bookEvent.multiplier,
+			clusterCount: bookEvent.clusterCount,
+			escalating: bookEvent.escalating,
+		});
+	},
+	heroStateChange: async (bookEvent: BookEventOfType<'heroStateChange'>) => {
+		eventEmitter.broadcast({
+			type: 'heroStateChange',
+			pose: bookEvent.pose,
+			level: bookEvent.level,
+		});
+	},
+	musicChange: async (bookEvent: BookEventOfType<'musicChange'>) => {
+		eventEmitter.broadcast({ type: 'soundMusic', name: bookEvent.track as any });
+	},
+	// customised
+	createBonusSnapshot: async (bookEvent: BookEventOfType<'createBonusSnapshot'>) => {
+		const { bookEvents } = bookEvent;
+
+		function findLastBookEvent<T>(type: T) {
+			return _.findLast(bookEvents, (bookEvent) => bookEvent.type === type) as
+				| BookEventOfType<T>
+				| undefined;
+		}
+
+		const lastFreeSpinTriggerEvent = findLastBookEvent('freeSpinTrigger' as const);
+		const lastUpdateFreeSpinEvent = findLastBookEvent('updateFreeSpin' as const);
+		const lastSetTotalWinEvent = findLastBookEvent('setTotalWin' as const);
+		const lastUpdateXPEvent = findLastBookEvent('updateXP' as const);
+
+		if (lastFreeSpinTriggerEvent) await playBookEvent(lastFreeSpinTriggerEvent, { bookEvents });
+		if (lastUpdateFreeSpinEvent) playBookEvent(lastUpdateFreeSpinEvent, { bookEvents });
+		if (lastSetTotalWinEvent) playBookEvent(lastSetTotalWinEvent, { bookEvents });
+		if (lastUpdateXPEvent) playBookEvent(lastUpdateXPEvent, { bookEvents });
+	},
+};
