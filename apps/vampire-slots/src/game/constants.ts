@@ -103,6 +103,8 @@ const l2Static = { type: 'sprite', assetKey: 'symbolQueenFull', sizeRatios: { wi
 const l3Static = { type: 'sprite', assetKey: 'symbolKingFull', sizeRatios: { width: 1, height: 1 } };
 const l4Static = { type: 'sprite', assetKey: 'symbolAceFull', sizeRatios: { width: 1, height: 1 } };
 
+const wiStatic = { type: 'sprite', assetKey: 'symbolWild', sizeRatios: { width: 1, height: 1 } };
+
 const scStatic = { type: 'sprite', assetKey: 'symbolCoffin', sizeRatios: { width: 1.243, height: 1.243 } };
 const ptStatic = { type: 'sprite', assetKey: 'symbolChalice', sizeRatios: { width: 1, height: 1 } };
 
@@ -183,21 +185,29 @@ export const SYMBOL_INFO_MAP = {
 		spin: l4Static,
 		land: l4Static,
 	},
+	WI: {
+		explosion: { ...wiStatic },
+		win: { ...wiStatic },
+		postWinStatic: { ...wiStatic },
+		static: { ...wiStatic },
+		spin: { ...wiStatic },
+		land: { ...wiStatic },
+	},
 	SC: {
-		explosion: scStatic,
-		postWinStatic: scStatic,
-		static: scStatic,
-		spin: scStatic,
-		win: scStatic,
-		land: scStatic,
+		explosion: { ...scStatic },
+		postWinStatic: { ...scStatic },
+		static: { ...scStatic },
+		spin: { ...scStatic },
+		win: { ...scStatic },
+		land: { ...scStatic },
 	},
 	PT: {
-		explosion: ptStatic,
-		win: ptStatic,
-		postWinStatic: ptStatic,
-		static: ptStatic,
-		spin: ptStatic,
-		land: ptStatic,
+		explosion: { ...ptStatic },
+		win: { ...ptStatic },
+		postWinStatic: { ...ptStatic },
+		static: { ...ptStatic },
+		spin: { ...ptStatic },
+		land: { ...ptStatic },
 	},
 } as const;
 

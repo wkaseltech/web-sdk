@@ -119,6 +119,19 @@ type BookEventChaliceAbsorb = {
 	multiplier: number;
 };
 
+// Math engine info events (no frontend action)
+type BookEventClusterInfo = {
+	index: number;
+	type: 'clusterInfo';
+	lClusters: { symbol: string; positions: Position[]; clusterSize: number }[];
+	hClusters: { symbol: string; positions: Position[]; clusterSize: number; gaugeMultiplier: number }[];
+};
+
+type BookEventWincap = {
+	index: number;
+	type: 'wincap';
+};
+
 // customised
 type BookEventCreateBonusSnapshot = {
 	index: number;
@@ -142,6 +155,9 @@ export type BookEvent =
 	| BookEventBloodMoon
 	| BookEventBloodMoonEnd
 	| BookEventChaliceAbsorb
+	// Math engine info
+	| BookEventClusterInfo
+	| BookEventWincap
 	// customised
 	| BookEventCreateBonusSnapshot;
 

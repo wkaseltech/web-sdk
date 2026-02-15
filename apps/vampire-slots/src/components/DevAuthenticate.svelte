@@ -155,7 +155,7 @@
 
 			// Seed mock state so the game renders without an RGS backend
 			stateBet.currency = 'USD';
-			stateBet.balanceAmount = 100_000;
+			stateBet.balanceAmount = 20;
 			stateBet.betAmount = 1;
 			stateConfig.betAmountOptions = [0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 50, 100];
 			stateConfig.betMenuOptions = [0.1, 0.2, 0.5, 1, 2, 5, 10, 25, 50, 100];

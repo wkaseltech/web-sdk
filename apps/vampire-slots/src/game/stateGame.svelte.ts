@@ -21,6 +21,7 @@ import {
 } from './constants';
 
 const onSymbolLand = ({ rawSymbol }: { rawSymbol: RawSymbol }) => {
+	if (!rawSymbol) return;
 	if (rawSymbol.name === 'SC') {
 		eventEmitter.broadcast({ type: 'soundScatterCounterIncrease' });
 		eventEmitter.broadcast({
@@ -97,9 +98,9 @@ const tumbleBoardCombined = () => {
 };
 
 const scatterLandIndex = () => {
-	if (stateGame.scatterCounter > 7) return 7;
+	if (stateGame.scatterCounter > 6) return 6;
 	if (stateGame.scatterCounter < 1) return 1;
-	return stateGame.scatterCounter as 1 | 2 | 3 | 4 | 5 | 6 | 7;
+	return stateGame.scatterCounter as 1 | 2 | 3 | 4 | 5 | 6;
 };
 
 const { enhanceBoard } = createEnhanceBoard();

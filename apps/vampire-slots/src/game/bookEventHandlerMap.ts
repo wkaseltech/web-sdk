@@ -122,8 +122,20 @@ export const bookEventHandlerMap: BookEventHandlerMap<BookEvent, BookEventContex
 				});
 			}
 
+			// Deduplicate: wild positions appear in both L and H wins.
+			// Strip positions already animated in L pass so they don't double-animate.
+			const lPositionSet = new Set(
+				_.flatten(lWins.map((w) => w.positions)).map((p) => `${p.reel},${p.row}`),
+			);
+			const hWinsDeduped = hWins.map((w) => ({
+				...w,
+				positions: w.positions.filter((p) => !lPositionSet.has(`${p.reel},${p.row}`)),
+			})).filter((w) => w.positions.length > 0);
+
 			// Skip boardShow so L symbols stay in their post-animation (drained) state
-			await showWins(hWins, false, true);
+			if (hWinsDeduped.length > 0) {
+				await showWins(hWinsDeduped, false, true);
+			}
 		} else {
 			// Only L or only H wins — animate all at once
 			await showWins(bookEvent.wins, true);
@@ -221,9 +233,39 @@ export const bookEventHandlerMap: BookEventHandlerMap<BookEvent, BookEventContex
 		eventEmitter.broadcast({ type: 'tumbleBoardShow' });
 		eventEmitter.broadcast({ type: 'tumbleBoardInit', addingBoard: bookEvent.newSymbols });
 		eventEmitter.broadcast({ type: 'soundOnce', name: 'sfx_multiplier_explosion_b' });
+		// Wilds persist through L-only clusters but clear on H cluster wins.
+		// Math engine lists wilds in explodingSymbols (they're part of clusters) and
+		// may duplicate positions (once per cluster). Compare unique exploded count vs
+		// new symbol count per reel: if they match, wild is cleared (H cluster consumed it).
+		// If unique > new, wild persists — filter it from exploding to keep reel length correct.
+		const boardRaw = stateGameDerived.boardRaw();
+		const uniquePerReel = new Map<number, Set<number>>();
+		for (const pos of bookEvent.explodingSymbols) {
+			if (!uniquePerReel.has(pos.reel)) uniquePerReel.set(pos.reel, new Set());
+			uniquePerReel.get(pos.reel)!.add(pos.row);
+		}
+		const wildPersistReels = new Set<number>();
+		for (const [reelIdx, rows] of uniquePerReel) {
+			const newCount = bookEvent.newSymbols[reelIdx]?.length ?? 0;
+			if (rows.size > newCount) wildPersistReels.add(reelIdx);
+		}
+		const filteredExploding = bookEvent.explodingSymbols.filter((pos) => {
+			if (!wildPersistReels.has(pos.reel)) return true;
+			const sym = boardRaw[pos.reel]?.[pos.row];
+			return sym?.name !== 'WI';
+		});
+		// Deduplicate: math engine sends same position twice when WI bridges L+H clusters.
+		// Duplicate positions cause oncomplete overwrite → first Promise never resolves.
+		const seen = new Set<string>();
+		const dedupedExploding = filteredExploding.filter((pos) => {
+			const key = `${pos.reel},${pos.row}`;
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
 		await eventEmitter.broadcastAsync({
 			type: 'tumbleBoardExplode',
-			explodingPositions: bookEvent.explodingSymbols,
+			explodingPositions: dedupedExploding,
 		});
 		eventEmitter.broadcast({ type: 'tumbleBoardRemoveExploded' });
 		await eventEmitter.broadcastAsync({ type: 'tumbleBoardSlideDown' });
@@ -306,22 +348,32 @@ export const bookEventHandlerMap: BookEventHandlerMap<BookEvent, BookEventContex
 	bloodMoon: async (bookEvent: BookEventOfType<'bloodMoon'>) => {
 		stateGame.bloodMoonActive = true;
 		stateGame.bloodMoonSpinsLeft = bookEvent.lockedSpins;
-		stateGame.gaugeMultiplier = bookEvent.multiplier;
-		// TODO: Blood Moon visual effect
+		// Blood Moon locks gauge at x10
+		stateGame.gaugeSegment = 5;
+		stateGame.gaugeMultiplier = 10;
+		eventEmitter.broadcast({
+			type: 'bloodGaugeUpdate',
+			level: 100,
+			segment: 5,
+			multiplier: 10,
+		});
 	},
 	bloodMoonEnd: async (bookEvent: BookEventOfType<'bloodMoonEnd'>) => {
 		stateGame.bloodMoonActive = false;
 		stateGame.bloodMoonSpinsLeft = 0;
-		stateGame.gaugeLevel = bookEvent.gaugeLevel;
+		stateGame.gaugeLevel = (bookEvent as any).newGaugeLevel ?? bookEvent.gaugeLevel;
 		stateGame.gaugeSegment = bookEvent.segment;
 		stateGame.gaugeMultiplier = bookEvent.multiplier;
 		eventEmitter.broadcast({
 			type: 'bloodGaugeUpdate',
-			level: bookEvent.gaugeLevel,
+			level: (bookEvent as any).newGaugeLevel ?? bookEvent.gaugeLevel,
 			segment: bookEvent.segment,
 			multiplier: bookEvent.multiplier,
 		});
 	},
+	// Math engine info events — no frontend action needed
+	clusterInfo: async () => {},
+	wincap: async () => {},
 	// customised
 	createBonusSnapshot: async (bookEvent: BookEventOfType<'createBonusSnapshot'>) => {
 		const { bookEvents } = bookEvent;

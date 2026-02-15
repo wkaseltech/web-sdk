@@ -84,7 +84,8 @@
 		tumbleBoardExplode: async ({ explodingPositions }) => {
 			const getPromises = () =>
 				explodingPositions.map(async (position) => {
-					const tumbleSymbol = context.stateGame.tumbleBoardBase[position.reel][position.row];
+					const tumbleSymbol = context.stateGame.tumbleBoardBase[position.reel]?.[position.row];
+					if (!tumbleSymbol) return;
 					tumbleSymbol.symbolState = 'explosion';
 					await waitForResolve((resolve) => (tumbleSymbol.oncomplete = resolve));
 				});

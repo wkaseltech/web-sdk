@@ -32,7 +32,8 @@
 		boardWithAnimateSymbols: async ({ symbolPositions }) => {
 			const getPromises = () =>
 				symbolPositions.map(async (position) => {
-					const reelSymbol = context.stateGame.board[position.reel].reelState.symbols[position.row];
+					const reelSymbol = context.stateGame.board[position.reel]?.reelState.symbols[position.row];
+					if (!reelSymbol) return;
 					reelSymbol.symbolState = 'win';
 					await waitForResolve((resolve) => (reelSymbol.oncomplete = resolve));
 					// Hold win state so fed/empty sprites are visible

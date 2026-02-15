@@ -166,14 +166,17 @@
 	context.eventEmitter.subscribeOnMount({
 		boardWithAnimateSymbols: ({ symbolPositions }) => {
 			// Orbs spawn when symbols transition to win state (full→empty / hungry→fed)
-			const positionsWithNames = symbolPositions.map((pos) => {
-				const reelSymbol = context.stateGame.board[pos.reel].reelState.symbols[pos.row];
-				return {
-					reel: pos.reel,
-					row: pos.row,
-					symbolName: reelSymbol.rawSymbol.name,
-				};
-			});
+			const positionsWithNames = symbolPositions
+				.map((pos) => {
+					const reelSymbol = context.stateGame.board[pos.reel]?.reelState.symbols[pos.row];
+					if (!reelSymbol?.rawSymbol) return null;
+					return {
+						reel: pos.reel,
+						row: pos.row,
+						symbolName: reelSymbol.rawSymbol.name,
+					};
+				})
+				.filter((p): p is NonNullable<typeof p> => p !== null);
 
 			spawnOrbs(positionsWithNames);
 		},

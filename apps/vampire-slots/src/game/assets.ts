@@ -71,6 +71,11 @@ export default {
 		type: 'sprite',
 		src: new URL('../../static/assets/sprites/symbols/ace_empty.png', import.meta.url).href,
 	},
+	// Wild symbol
+	symbolWild: {
+		type: 'sprite',
+		src: new URL('../../static/assets/sprites/symbols/wild.png', import.meta.url).href,
+	},
 	// Special symbols
 	symbolCoffin: {
 		type: 'sprite',
